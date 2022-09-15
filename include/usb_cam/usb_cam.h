@@ -76,7 +76,7 @@ class UsbCam {
 
   // start camera
   void start(const std::string& dev, io_method io, pixel_format pf,
-		    int image_width, int image_height, int framerate);
+		    int image_width, int image_height, int framerate, std::string ffmpeg_log_level="", int buffer_count=4);
   // shutdown camera
   void shutdown(void);
 
@@ -116,6 +116,7 @@ class UsbCam {
 
 
   int init_mjpeg_decoder(int image_width, int image_height);
+  void set_ffmpeg_log_level(std::string ffmpeg_log_level);
   void mjpeg2rgb(char *MJPEG, int len, char *RGB, int NumPixels);
   void process_image(const void * src, int len, camera_image_t *dest);
   int read_frame();
@@ -146,6 +147,10 @@ class UsbCam {
   int avframe_rgb_size_;
   struct SwsContext *video_sws_;
   camera_image_t *image_;
+
+  std::string ffmpeg_log_level_;
+  int buffer_count_;
+
 
 };
 

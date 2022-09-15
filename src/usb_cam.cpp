@@ -356,7 +356,8 @@ void rgb242rgb(char *YUV, char *RGB, int NumPixels)
 UsbCam::UsbCam()
   : io_(IO_METHOD_MMAP), fd_(-1), buffers_(NULL), n_buffers_(0), avframe_camera_(NULL),
     avframe_rgb_(NULL), avcodec_(NULL), avoptions_(NULL), avcodec_context_(NULL),
-    avframe_camera_size_(0), avframe_rgb_size_(0), video_sws_(NULL), image_(NULL), is_capturing_(false) {
+    avframe_camera_size_(0), avframe_rgb_size_(0), video_sws_(NULL), image_(NULL), is_capturing_(false),
+    ffmpeg_log_level_(""), buffer_count_(4) {
 }
 UsbCam::~UsbCam()
 {
@@ -366,6 +367,8 @@ UsbCam::~UsbCam()
 int UsbCam::init_mjpeg_decoder(int image_width, int image_height)
 {
   avcodec_register_all();
+
+  set_ffmpeg_log_level(ffmpeg_log_level_);
 
   avcodec_ = avcodec_find_decoder(AV_CODEC_ID_MJPEG);
   if (!avcodec_)
@@ -482,6 +485,7 @@ void UsbCam::process_image(const void * src, int len, camera_image_t *dest)
     memcpy(dest->image, (char*)src, dest->width * dest->height);
 }
 
+
 int UsbCam::read_frame()
 {
   struct v4l2_buffer buf;
@@ -584,6 +588,7 @@ int UsbCam::read_frame()
 
   return 1;
 }
+
 
 bool UsbCam::is_capturing() {
   return is_capturing_;
@@ -721,13 +726,14 @@ void UsbCam::init_read(unsigned int buffer_size)
   }
 }
 
+
 void UsbCam::init_mmap(void)
 {
   struct v4l2_requestbuffers req;
 
   CLEAR(req);
 
-  req.count = 4;
+  req.count = buffer_count_;
   req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
   req.memory = V4L2_MEMORY_MMAP;
 
@@ -744,7 +750,7 @@ void UsbCam::init_mmap(void)
     }
   }
 
-  if (req.count < 2)
+  if (req.count < buffer_count_)
   {
     ROS_ERROR_STREAM("Insufficient buffer memory on " << camera_dev_);
     exit(EXIT_FAILURE);
@@ -781,6 +787,7 @@ void UsbCam::init_mmap(void)
   }
 }
 
+
 void UsbCam::init_userp(unsigned int buffer_size)
 {
   struct v4l2_requestbuffers req;
@@ -791,7 +798,7 @@ void UsbCam::init_userp(unsigned int buffer_size)
 
   CLEAR(req);
 
-  req.count = 4;
+  req.count = buffer_count_;
   req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
   req.memory = V4L2_MEMORY_USERPTR;
 
@@ -808,8 +815,16 @@ void UsbCam::init_userp(unsigned int buffer_size)
       errno_exit("VIDIOC_REQBUFS");
     }
   }
+  
+  //It's unclear if this can be triggered, but since we use req.count for allocation below this seems a reasonable check.
+  if (req.count < buffer_count_)  
+  {
+    ROS_ERROR_STREAM("Insufficient buffer memory on " << camera_dev_);
+    exit(EXIT_FAILURE);
+  }
 
-  buffers_ = (buffer*)calloc(4, sizeof(*buffers_));
+
+  buffers_ = (buffer*)calloc(req.count, sizeof(*buffers_));
 
   if (!buffers_)
   {
@@ -817,7 +832,7 @@ void UsbCam::init_userp(unsigned int buffer_size)
     exit(EXIT_FAILURE);
   }
 
-  for (n_buffers_ = 0; n_buffers_ < 4; ++n_buffers_)
+  for (n_buffers_ = 0; n_buffers_ < req.count; ++n_buffers_)
   {
     buffers_[n_buffers_].length = buffer_size;
     buffers_[n_buffers_].start = memalign(/* boundary */page_size, buffer_size);
@@ -1004,12 +1019,14 @@ void UsbCam::open_device(void)
 
 void UsbCam::start(const std::string& dev, io_method io_method,
 		   pixel_format pixel_format, int image_width, int image_height,
-		   int framerate)
+		   int framerate, std::string ffmpeg_log_level, int buffer_count)
 {
   camera_dev_ = dev;
 
   io_ = io_method;
   monochrome_ = false;
+  ffmpeg_log_level_=ffmpeg_log_level;
+  buffer_count_=buffer_count;
   if (pixel_format == PIXEL_FORMAT_YUYV)
     pixelformat_ = V4L2_PIX_FMT_YUYV;
   else if (pixel_format == PIXEL_FORMAT_UYVY)
@@ -1244,4 +1261,24 @@ UsbCam::pixel_format UsbCam::pixel_format_from_string(const std::string& str)
       return PIXEL_FORMAT_UNKNOWN;
 }
 
+//set_ffmpeg_log_level(): valid options are 
+//"fatal" : only print fatal errors.
+//"error" : print non-fatal errors
+//any other string yields default ffmpeg behaviour.
+void UsbCam::set_ffmpeg_log_level(std::string ffmpeg_log_level)
+{
+  //supress warnings like deprecated pixel formats.
+  if("error"==ffmpeg_log_level)
+  {
+    av_log_set_level(AV_LOG_ERROR);
+    ROS_INFO("FFMPEG log level set to AV_LOG_ERROR");
+  }
+  //suppress warnings and errors.
+  else if("fatal"==ffmpeg_log_level)
+  {
+    av_log_set_level(AV_LOG_FATAL);
+    ROS_INFO("FFMPEG log level set to AV_LOG_FATAL");
+  }
+  //else no change in default log level.
+}
 }

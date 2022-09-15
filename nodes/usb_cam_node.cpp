@@ -54,11 +54,11 @@ public:
   image_transport::CameraPublisher image_pub_;
 
   // parameters
-  std::string video_device_name_, io_method_name_, pixel_format_name_, camera_name_, camera_info_url_;
+  std::string video_device_name_, io_method_name_, pixel_format_name_, camera_name_, camera_info_url_, ffmpeg_log_level_;
   //std::string start_service_name_, start_service_name_;
   bool streaming_status_;
   int image_width_, image_height_, framerate_, exposure_, brightness_, contrast_, saturation_, sharpness_, focus_,
-      white_balance_, gain_;
+      white_balance_, gain_, buffer_count_;
   bool autofocus_, autoexposure_, auto_white_balance_;
   boost::shared_ptr<camera_info_manager::CameraInfoManager> cinfo_;
 
@@ -116,6 +116,13 @@ public:
     node_.param("camera_frame_id", img_.header.frame_id, std::string("head_camera"));
     node_.param("camera_name", camera_name_, std::string("head_camera"));
     node_.param("camera_info_url", camera_info_url_, std::string(""));
+
+    //ffmpeg settings
+    node_.param("ffmpeg_log_level", ffmpeg_log_level_, std::string(""));
+
+    //v4l driver buffers
+    node_.param("buffer_count", buffer_count_, 4);
+
     cinfo_.reset(new camera_info_manager::CameraInfoManager(node_, camera_name_, camera_info_url_));
 
     // create Services
@@ -134,8 +141,8 @@ public:
     }
 
 
-    ROS_INFO("Starting '%s' (%s) at %dx%d via %s (%s) at %i FPS", camera_name_.c_str(), video_device_name_.c_str(),
-        image_width_, image_height_, io_method_name_.c_str(), pixel_format_name_.c_str(), framerate_);
+    ROS_INFO("Starting '%s' (%s) at %dx%d via %s (%s) at %i FPS, buffers: %d, log level: %s", camera_name_.c_str(), video_device_name_.c_str(),
+        image_width_, image_height_, io_method_name_.c_str(), pixel_format_name_.c_str(), framerate_, buffer_count_, ffmpeg_log_level_.c_str());
 
     // set the IO method
     UsbCam::io_method io_method = UsbCam::io_method_from_string(io_method_name_);
@@ -157,7 +164,7 @@ public:
 
     // start the camera
     cam_.start(video_device_name_.c_str(), io_method, pixel_format, image_width_,
-		     image_height_, framerate_);
+		     image_height_, framerate_, ffmpeg_log_level_, buffer_count_);
 
     // set camera parameters
     if (brightness_ >= 0)
@@ -257,14 +264,9 @@ public:
     return true;
   }
 
-
-
-
-
-
 };
 
-}
+} //end class UsbCamNode
 
 int main(int argc, char **argv)
 {
