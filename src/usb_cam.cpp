@@ -409,7 +409,7 @@ int UsbCam::init_mjpeg_decoder(int image_width, int image_height)
   return 1;
 }
 
-void UsbCam::mjpeg2rgb(char *MJPEG, int len, char *RGB, int NumPixels)
+int UsbCam::mjpeg2rgb(char *MJPEG, int len, char *RGB, int NumPixels)
 {
   int got_picture;
 
@@ -427,7 +427,7 @@ void UsbCam::mjpeg2rgb(char *MJPEG, int len, char *RGB, int NumPixels)
   if (decoded_len < 0)
   {
     ROS_ERROR("Error while decoding frame.");
-    return;
+    return(-1);
   }
 #else
   avcodec_decode_video(avcodec_context_, avframe_camera_, &got_picture, (uint8_t *) MJPEG, len);
@@ -436,7 +436,7 @@ void UsbCam::mjpeg2rgb(char *MJPEG, int len, char *RGB, int NumPixels)
   if (!got_picture)
   {
     ROS_ERROR("Webcam: expected picture but didn't get it...");
-    return;
+    return(-1);
   }
 
   int xsize = avcodec_context_->width;
@@ -445,7 +445,7 @@ void UsbCam::mjpeg2rgb(char *MJPEG, int len, char *RGB, int NumPixels)
   if (pic_size != avframe_camera_size_)
   {
     ROS_ERROR("outbuf size mismatch.  pic_size: %d bufsize: %d", pic_size, avframe_camera_size_);
-    return;
+    return(-1);
   }
 
   video_sws_ = sws_getContext(xsize, ysize, avcodec_context_->pix_fmt, xsize, ysize, AV_PIX_FMT_RGB24, SWS_BILINEAR, NULL,
@@ -458,12 +458,14 @@ void UsbCam::mjpeg2rgb(char *MJPEG, int len, char *RGB, int NumPixels)
   if (size != avframe_rgb_size_)
   {
     ROS_ERROR("webcam: avpicture_layout error: %d", size);
-    return;
+    return(-1);
   }
+  return(0);
 }
 
-void UsbCam::process_image(const void * src, int len, camera_image_t *dest)
+int UsbCam::process_image(const void * src, int len, camera_image_t *dest)
 {
+  int retval=0;
   if (pixelformat_ == V4L2_PIX_FMT_YUYV)
   {
     if (monochrome_)
@@ -478,11 +480,13 @@ void UsbCam::process_image(const void * src, int len, camera_image_t *dest)
   else if (pixelformat_ == V4L2_PIX_FMT_UYVY)
     uyvy2rgb((char*)src, dest->image, dest->width * dest->height);
   else if (pixelformat_ == V4L2_PIX_FMT_MJPEG)
-    mjpeg2rgb((char*)src, len, dest->image, dest->width * dest->height);
+    retval=mjpeg2rgb((char*)src, len, dest->image, dest->width * dest->height);
   else if (pixelformat_ == V4L2_PIX_FMT_RGB24)
     rgb242rgb((char*)src, dest->image, dest->width * dest->height);
   else if (pixelformat_ == V4L2_PIX_FMT_GREY)
     memcpy(dest->image, (char*)src, dest->width * dest->height);
+
+  return(retval);
 }
 
 
@@ -490,7 +494,7 @@ int UsbCam::read_frame()
 {
   struct v4l2_buffer buf;
   unsigned int i;
-  int len;
+  int len, retval=0;
 
   switch (io_)
   {
@@ -513,7 +517,7 @@ int UsbCam::read_frame()
         }
       }
 
-      process_image(buffers_[0].start, len, image_);
+      if(0!=process_image(buffers_[0].start, len, image_)) return(0);
 
       break;
 
@@ -542,7 +546,7 @@ int UsbCam::read_frame()
 
       assert(buf.index < n_buffers_);
       len = buf.bytesused;
-      process_image(buffers_[buf.index].start, len, image_);
+      if(0!=process_image(buffers_[buf.index].start, len, image_)) return(0);
 
       if (-1 == xioctl(fd_, VIDIOC_QBUF, &buf))
         errno_exit("VIDIOC_QBUF");
@@ -578,7 +582,7 @@ int UsbCam::read_frame()
 
       assert(i < n_buffers_);
       len = buf.bytesused;
-      process_image((void *)buf.m.userptr, len, image_);
+      if(0!=process_image((void *)buf.m.userptr, len, image_)) return(0);
 
       if (-1 == xioctl(fd_, VIDIOC_QBUF, &buf))
         errno_exit("VIDIOC_QBUF");
@@ -1096,10 +1100,10 @@ void UsbCam::shutdown(void)
   image_ = NULL;
 }
 
-void UsbCam::grab_image(sensor_msgs::Image* msg)
+int UsbCam::grab_image(sensor_msgs::Image* msg)
 {
   // grab the image
-  grab_image();
+  if(0!=grab_image()) return(-1);
   // stamp the image
   msg->header.stamp = ros::Time::now();
   // fill the info
@@ -1113,9 +1117,10 @@ void UsbCam::grab_image(sensor_msgs::Image* msg)
     fillImage(*msg, "rgb8", image_->height, image_->width, 3 * image_->width,
         image_->image);
   }
+  return(0);
 }
 
-void UsbCam::grab_image()
+int UsbCam::grab_image()
 {
   fd_set fds;
   struct timeval tv;
@@ -1133,7 +1138,7 @@ void UsbCam::grab_image()
   if (-1 == r)
   {
     if (EINTR == errno)
-      return;
+      return(-1);
 
     errno_exit("select");
   }
@@ -1144,8 +1149,9 @@ void UsbCam::grab_image()
     exit(EXIT_FAILURE);
   }
 
-  read_frame();
+  if(1!=read_frame()) return(-1);
   image_->is_new = 1;
+  return(0);
 }
 
 // enables/disables auto focus

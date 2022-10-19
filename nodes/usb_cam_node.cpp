@@ -236,7 +236,7 @@ public:
   bool take_and_send_image()
   {
     // grab the image
-    cam_.grab_image(&img_);
+    if(0!=cam_.grab_image(&img_)) return(false);
 
     // grab the camera info
     sensor_msgs::CameraInfoPtr ci(new sensor_msgs::CameraInfo(cinfo_->getCameraInfo()));
@@ -255,7 +255,7 @@ public:
     while (node_.ok())
     {
       if (cam_.is_capturing()) {
-        if (!take_and_send_image()) ROS_WARN("USB camera did not respond in time.");
+        if (!take_and_send_image()) ROS_WARN("USB camera did not respond in time or provided corrupted data.");
       }
       ros::spinOnce();
       loop_rate.sleep();
