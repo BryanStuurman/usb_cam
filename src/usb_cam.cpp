@@ -426,7 +426,7 @@ void UsbCam::mjpeg2rgb(char *MJPEG, int len, char *RGB, int NumPixels)
 
   if (decoded_len < 0)
   {
-    ROS_ERROR("Error while decoding frame.");
+    ROS_ERROR("%s Error while decoding frame.", camera_dev_.c_str());
     return;
   }
 #else
@@ -435,7 +435,7 @@ void UsbCam::mjpeg2rgb(char *MJPEG, int len, char *RGB, int NumPixels)
 
   if (!got_picture)
   {
-    ROS_ERROR("Webcam: expected picture but didn't get it...");
+    ROS_ERROR("%s: expected picture but didn't get it...", camera_dev_.c_str());
     return;
   }
 
@@ -444,7 +444,7 @@ void UsbCam::mjpeg2rgb(char *MJPEG, int len, char *RGB, int NumPixels)
   int pic_size = avpicture_get_size(avcodec_context_->pix_fmt, xsize, ysize);
   if (pic_size != avframe_camera_size_)
   {
-    ROS_ERROR("outbuf size mismatch.  pic_size: %d bufsize: %d", pic_size, avframe_camera_size_);
+    ROS_ERROR("%s outbuf size mismatch.  pic_size: %d bufsize: %d", camera_dev_.c_str(), pic_size, avframe_camera_size_);
     return;
   }
 
@@ -457,7 +457,7 @@ void UsbCam::mjpeg2rgb(char *MJPEG, int len, char *RGB, int NumPixels)
   int size = avpicture_layout((AVPicture *)avframe_rgb_, AV_PIX_FMT_RGB24, xsize, ysize, (uint8_t *)RGB, avframe_rgb_size_);
   if (size != avframe_rgb_size_)
   {
-    ROS_ERROR("webcam: avpicture_layout error: %d", size);
+    ROS_ERROR("%s: avpicture_layout error: %d", camera_dev_.c_str(), size);
     return;
   }
 }
