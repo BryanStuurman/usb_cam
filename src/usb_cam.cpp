@@ -1125,7 +1125,7 @@ void UsbCam::grab_image()
   FD_SET(fd_, &fds);
 
   /* Timeout. */
-  tv.tv_sec = 2;
+  tv.tv_sec = 1;
   tv.tv_usec = 0;
 
   r = select(fd_ + 1, &fds, NULL, NULL, &tv);
@@ -1140,7 +1140,7 @@ void UsbCam::grab_image()
 
   if (0 == r)
   {
-    ROS_ERROR("select timeout");
+    ROS_ERROR("%s select timeout", camera_dev_.c_str());
     exit(EXIT_FAILURE);
   }
 
